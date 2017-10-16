@@ -290,12 +290,10 @@ static const struct snd_soc_dapm_widget sun8i_codec_dapm_widgets[] = {
 			    SUN8I_AIF1_DACDAT_CTRL_AIF1_DA0R_ENA, 0),
 
 	/* DAC Mixers */
-	SND_SOC_DAPM_MIXER("Left Digital DAC Mixer", SND_SOC_NOPM, 0, 0,
-			   sun8i_dac_mixer_controls,
-			   ARRAY_SIZE(sun8i_dac_mixer_controls)),
-	SND_SOC_DAPM_MIXER("Right Digital DAC Mixer", SND_SOC_NOPM, 0, 0,
-			   sun8i_dac_mixer_controls,
-			   ARRAY_SIZE(sun8i_dac_mixer_controls)),
+	SOC_MIXER_ARRAY("Left Digital DAC Mixer", SND_SOC_NOPM, 0, 0,
+			sun8i_dac_mixer_controls),
+	SOC_MIXER_ARRAY("Right Digital DAC Mixer", SND_SOC_NOPM, 0, 0,
+			sun8i_dac_mixer_controls),
 
 	/* Clocks */
 	SND_SOC_DAPM_SUPPLY("MODCLK AFI1", SUN8I_MOD_CLK_ENA,
@@ -343,7 +341,7 @@ static const struct snd_soc_dapm_route sun8i_codec_dapm_routes[] = {
 	  "AIF1 Slot 0 Right"},
 };
 
-static struct snd_soc_dai_ops sun8i_codec_dai_ops = {
+static const struct snd_soc_dai_ops sun8i_codec_dai_ops = {
 	.hw_params = sun8i_codec_hw_params,
 	.set_fmt = sun8i_set_fmt,
 };
@@ -362,7 +360,7 @@ static struct snd_soc_dai_driver sun8i_codec_dai = {
 	.ops = &sun8i_codec_dai_ops,
 };
 
-static struct snd_soc_codec_driver sun8i_soc_codec = {
+static const struct snd_soc_codec_driver sun8i_soc_codec = {
 	.component_driver = {
 		.dapm_widgets		= sun8i_codec_dapm_widgets,
 		.num_dapm_widgets	= ARRAY_SIZE(sun8i_codec_dapm_widgets),

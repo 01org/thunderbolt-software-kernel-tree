@@ -104,4 +104,10 @@
 
 #define SO_COOKIE		57
 
+#define SCM_TIMESTAMPING_PKTINFO	58
+
+#define SO_PEERGROUPS		59
+
+#define SO_ZEROCOPY		60
+
 #endif /* _ASM_SOCKET_H */

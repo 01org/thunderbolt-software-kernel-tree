@@ -27,6 +27,7 @@
 #include "tool.h"
 #include "data.h"
 #include "sort.h"
+#include "event.h"
 #include "evlist.h"
 #include "evsel.h"
 #include <asm/bug.h>
@@ -1724,10 +1725,10 @@ static int c2c_hists__init_sort(struct perf_hpp_list *hpp_list, char *name)
 				tok; tok = strtok_r(NULL, ", ", &tmp)) {	\
 			ret = _fn(hpp_list, tok);				\
 			if (ret == -EINVAL) {					\
-				error("Invalid --fields key: `%s'", tok);	\
+				pr_err("Invalid --fields key: `%s'", tok);	\
 				break;						\
 			} else if (ret == -ESRCH) {				\
-				error("Unknown --fields key: `%s'", tok);	\
+				pr_err("Unknown --fields key: `%s'", tok);	\
 				break;						\
 			}							\
 		}								\

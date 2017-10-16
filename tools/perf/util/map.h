@@ -130,17 +130,18 @@ struct thread;
  */
 #define __map__for_each_symbol_by_name(map, sym_name, pos)	\
 	for (pos = map__find_symbol_by_name(map, sym_name);	\
-	     pos && arch__compare_symbol_names(pos->name, sym_name) == 0;	\
+	     pos &&						\
+	     !symbol__match_symbol_name(pos->name, sym_name,	\
+					SYMBOL_TAG_INCLUDE__DEFAULT_ONLY); \
 	     pos = symbol__next_by_name(pos))
 
 #define map__for_each_symbol_by_name(map, sym_name, pos)		\
 	__map__for_each_symbol_by_name(map, sym_name, (pos))
 
-int arch__compare_symbol_names(const char *namea, const char *nameb);
 void map__init(struct map *map, enum map_type type,
 	       u64 start, u64 end, u64 pgoff, struct dso *dso);
 struct map *map__new(struct machine *machine, u64 start, u64 len,
-		     u64 pgoff, u32 pid, u32 d_maj, u32 d_min, u64 ino,
+		     u64 pgoff, u32 d_maj, u32 d_min, u64 ino,
 		     u64 ino_gen, u32 prot, u32 flags,
 		     char *filename, enum map_type type, struct thread *thread);
 struct map *map__new2(u64 start, struct dso *dso, enum map_type type);

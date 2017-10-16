@@ -166,6 +166,20 @@ struct ibmvnic_statistics {
 	u8 reserved[72];
 } __packed __aligned(8);
 
+#define NUM_TX_STATS 3
+struct ibmvnic_tx_queue_stats {
+	u64 packets;
+	u64 bytes;
+	u64 dropped_packets;
+};
+
+#define NUM_RX_STATS 3
+struct ibmvnic_rx_queue_stats {
+	u64 packets;
+	u64 bytes;
+	u64 interrupts;
+};
+
 struct ibmvnic_acl_buffer {
 	__be32 len;
 	__be32 version;
@@ -595,7 +609,7 @@ struct ibmvnic_request_map_rsp {
 	u8 cmd;
 	u8 reserved1;
 	u8 map_id;
-	u8 reserved2[4];
+	u8 reserved2[8];
 	struct ibmvnic_rc rc;
 } __packed __aligned(8);
 
@@ -913,6 +927,26 @@ struct ibmvnic_error_buff {
 	__be32 error_id;
 };
 
+enum vnic_state {VNIC_PROBING = 1,
+		 VNIC_PROBED,
+		 VNIC_OPENING,
+		 VNIC_OPEN,
+		 VNIC_CLOSING,
+		 VNIC_CLOSED,
+		 VNIC_REMOVING,
+		 VNIC_REMOVED};
+
+enum ibmvnic_reset_reason {VNIC_RESET_FAILOVER = 1,
+			   VNIC_RESET_MOBILITY,
+			   VNIC_RESET_FATAL,
+			   VNIC_RESET_NON_FATAL,
+			   VNIC_RESET_TIMEOUT};
+
+struct ibmvnic_rwi {
+	enum ibmvnic_reset_reason reset_reason;
+	struct list_head list;
+};
+
 struct ibmvnic_adapter {
 	struct vio_dev *vdev;
 	struct net_device *netdev;
@@ -922,7 +956,6 @@ struct ibmvnic_adapter {
 	dma_addr_t ip_offload_tok;
 	struct ibmvnic_control_ip_offload_buffer ip_offload_ctrl;
 	dma_addr_t ip_offload_ctrl_tok;
-	bool migrated;
 	u32 msg_enable;
 
 	/* Statistics */
@@ -936,6 +969,9 @@ struct ibmvnic_adapter {
 	int replenish_task_cycles;
 	int tx_send_failed;
 	int tx_map_failed;
+
+	struct ibmvnic_tx_queue_stats *tx_stats_buffers;
+	struct ibmvnic_rx_queue_stats *rx_stats_buffers;
 
 	int phys_link_state;
 	int logical_link_state;
@@ -962,7 +998,6 @@ struct ibmvnic_adapter {
 	u64 promisc;
 
 	struct ibmvnic_tx_pool *tx_pool;
-	bool closing;
 	struct completion init_done;
 	int init_done_rc;
 
@@ -970,6 +1005,7 @@ struct ibmvnic_adapter {
 	spinlock_t error_list_lock;
 
 	struct completion fw_done;
+	int fw_done_rc;
 
 	/* partner capabilities */
 	u64 min_tx_queues;
@@ -1007,9 +1043,12 @@ struct ibmvnic_adapter {
 	__be64 tx_rx_desc_req;
 	u8 map_id;
 
-	struct work_struct vnic_crq_init;
-	struct work_struct ibmvnic_xport;
 	struct tasklet_struct tasklet;
-	bool failover;
-	bool is_closed;
+	enum vnic_state state;
+	enum ibmvnic_reset_reason reset_reason;
+	struct mutex reset_lock, rwi_lock;
+	struct list_head rwi_list;
+	struct work_struct ibmvnic_reset;
+	bool resetting;
+	bool napi_enabled, from_passive_init;
 };

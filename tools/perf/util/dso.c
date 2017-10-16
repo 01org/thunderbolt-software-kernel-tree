@@ -32,6 +32,7 @@ char dso__symtab_origin(const struct dso *dso)
 		[DSO_BINARY_TYPE__JAVA_JIT]			= 'j',
 		[DSO_BINARY_TYPE__DEBUGLINK]			= 'l',
 		[DSO_BINARY_TYPE__BUILD_ID_CACHE]		= 'B',
+		[DSO_BINARY_TYPE__BUILD_ID_CACHE_DEBUGINFO]	= 'D',
 		[DSO_BINARY_TYPE__FEDORA_DEBUGINFO]		= 'f',
 		[DSO_BINARY_TYPE__UBUNTU_DEBUGINFO]		= 'u',
 		[DSO_BINARY_TYPE__OPENEMBEDDED_DEBUGINFO]	= 'o',
@@ -97,7 +98,12 @@ int dso__read_binary_type_filename(const struct dso *dso,
 		break;
 	}
 	case DSO_BINARY_TYPE__BUILD_ID_CACHE:
-		if (dso__build_id_filename(dso, filename, size) == NULL)
+		if (dso__build_id_filename(dso, filename, size, false) == NULL)
+			ret = -1;
+		break;
+
+	case DSO_BINARY_TYPE__BUILD_ID_CACHE_DEBUGINFO:
+		if (dso__build_id_filename(dso, filename, size, true) == NULL)
 			ret = -1;
 		break;
 
@@ -248,6 +254,64 @@ bool dso__needs_decompress(struct dso *dso)
 		dso->symtab_type == DSO_BINARY_TYPE__GUEST_KMODULE_COMP;
 }
 
+static int decompress_kmodule(struct dso *dso, const char *name, char *tmpbuf)
+{
+	int fd = -1;
+	struct kmod_path m;
+
+	if (!dso__needs_decompress(dso))
+		return -1;
+
+	if (kmod_path__parse_ext(&m, dso->long_name))
+		return -1;
+
+	if (!m.comp)
+		goto out;
+
+	fd = mkstemp(tmpbuf);
+	if (fd < 0) {
+		dso->load_errno = errno;
+		goto out;
+	}
+
+	if (!decompress_to_file(m.ext, name, fd)) {
+		dso->load_errno = DSO_LOAD_ERRNO__DECOMPRESSION_FAILURE;
+		close(fd);
+		fd = -1;
+	}
+
+out:
+	free(m.ext);
+	return fd;
+}
+
+int dso__decompress_kmodule_fd(struct dso *dso, const char *name)
+{
+	char tmpbuf[] = KMOD_DECOMP_NAME;
+	int fd;
+
+	fd = decompress_kmodule(dso, name, tmpbuf);
+	unlink(tmpbuf);
+	return fd;
+}
+
+int dso__decompress_kmodule_path(struct dso *dso, const char *name,
+				 char *pathname, size_t len)
+{
+	char tmpbuf[] = KMOD_DECOMP_NAME;
+	int fd;
+
+	fd = decompress_kmodule(dso, name, tmpbuf);
+	if (fd < 0) {
+		unlink(tmpbuf);
+		return -1;
+	}
+
+	strncpy(pathname, tmpbuf, len);
+	close(fd);
+	return 0;
+}
+
 /*
  * Parses kernel module specified in @path and updates
  * @m argument like:
@@ -335,6 +399,21 @@ int __kmod_path__parse(struct kmod_path *m, const char *path,
 	return 0;
 }
 
+void dso__set_module_info(struct dso *dso, struct kmod_path *m,
+			  struct machine *machine)
+{
+	if (machine__is_host(machine))
+		dso->symtab_type = DSO_BINARY_TYPE__SYSTEM_PATH_KMODULE;
+	else
+		dso->symtab_type = DSO_BINARY_TYPE__GUEST_KMODULE;
+
+	/* _KMODULE_COMP should be next to _KMODULE */
+	if (m->kmod && m->comp)
+		dso->symtab_type++;
+
+	dso__set_short_name(dso, strdup(m->name), true);
+}
+
 /*
  * Global list of open DSOs and the counter.
  */
@@ -381,7 +460,7 @@ static int do_open(char *name)
 
 static int __open_dso(struct dso *dso, struct machine *machine)
 {
-	int fd;
+	int fd = -EINVAL;
 	char *root_dir = (char *)"";
 	char *name = malloc(PATH_MAX);
 
@@ -392,15 +471,30 @@ static int __open_dso(struct dso *dso, struct machine *machine)
 		root_dir = machine->root_dir;
 
 	if (dso__read_binary_type_filename(dso, dso->binary_type,
-					    root_dir, name, PATH_MAX)) {
-		free(name);
-		return -EINVAL;
-	}
+					    root_dir, name, PATH_MAX))
+		goto out;
 
 	if (!is_regular_file(name))
-		return -EINVAL;
+		goto out;
+
+	if (dso__needs_decompress(dso)) {
+		char newpath[KMOD_DECOMP_LEN];
+		size_t len = sizeof(newpath);
+
+		if (dso__decompress_kmodule_path(dso, name, newpath, len) < 0) {
+			fd = -dso->load_errno;
+			goto out;
+		}
+
+		strcpy(name, newpath);
+	}
 
 	fd = do_open(name);
+
+	if (dso__needs_decompress(dso))
+		unlink(name);
+
+out:
 	free(name);
 	return fd;
 }
@@ -416,7 +510,14 @@ static void check_data_close(void);
  */
 static int open_dso(struct dso *dso, struct machine *machine)
 {
-	int fd = __open_dso(dso, machine);
+	int fd;
+	struct nscookie nsc;
+
+	if (dso->binary_type != DSO_BINARY_TYPE__BUILD_ID_CACHE)
+		nsinfo__mountns_enter(dso->nsinfo, &nsc);
+	fd = __open_dso(dso, machine);
+	if (dso->binary_type != DSO_BINARY_TYPE__BUILD_ID_CACHE)
+		nsinfo__mountns_exit(&nsc);
 
 	if (fd >= 0) {
 		dso__list_add(dso);
@@ -1148,6 +1249,7 @@ void dso__delete(struct dso *dso)
 	dso_cache__free(dso);
 	dso__free_a2l(dso);
 	zfree(&dso->symsrc_filename);
+	nsinfo__zput(dso->nsinfo);
 	pthread_mutex_destroy(&dso->lock);
 	free(dso);
 }
@@ -1213,6 +1315,7 @@ bool __dsos__read_build_ids(struct list_head *head, bool with_hits)
 {
 	bool have_build_id = false;
 	struct dso *pos;
+	struct nscookie nsc;
 
 	list_for_each_entry(pos, head, node) {
 		if (with_hits && !pos->hit && !dso__is_vdso(pos))
@@ -1221,11 +1324,13 @@ bool __dsos__read_build_ids(struct list_head *head, bool with_hits)
 			have_build_id = true;
 			continue;
 		}
+		nsinfo__mountns_enter(pos->nsinfo, &nsc);
 		if (filename__read_build_id(pos->long_name, pos->build_id,
 					    sizeof(pos->build_id)) > 0) {
 			have_build_id	  = true;
 			pos->has_build_id = true;
 		}
+		nsinfo__mountns_exit(&nsc);
 	}
 
 	return have_build_id;

@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <uapi/linux/mman.h> /* To get things like MAP_HUGETLB even on older libc headers */
 #include <api/fs/fs.h>
+#include <linux/perf_event.h>
 #include "event.h"
 #include "debug.h"
 #include "hist.h"
@@ -56,6 +57,7 @@ static const char *perf_event__names[] = {
 	[PERF_RECORD_STAT_ROUND]		= "STAT_ROUND",
 	[PERF_RECORD_EVENT_UPDATE]		= "EVENT_UPDATE",
 	[PERF_RECORD_TIME_CONV]			= "TIME_CONV",
+	[PERF_RECORD_HEADER_FEATURE]		= "FEATURE",
 };
 
 static const char *perf_ns__names[] = {
@@ -767,15 +769,16 @@ static int find_symbol_cb(void *arg, const char *name, char type,
 	return 1;
 }
 
-u64 kallsyms__get_function_start(const char *kallsyms_filename,
-				 const char *symbol_name)
+int kallsyms__get_function_start(const char *kallsyms_filename,
+				 const char *symbol_name, u64 *addr)
 {
 	struct process_symbol_args args = { .name = symbol_name, };
 
 	if (kallsyms__parse(kallsyms_filename, &args, find_symbol_cb) <= 0)
-		return 0;
+		return -1;
 
-	return args.start;
+	*addr = args.start;
+	return 0;
 }
 
 int perf_event__synthesize_kernel_mmap(struct perf_tool *tool,

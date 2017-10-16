@@ -55,12 +55,6 @@ Documentation
    contains information about the problems, which may result by upgrading
    your kernel.
 
- - The Documentation/DocBook/ subdirectory contains several guides for
-   kernel developers and users.  These guides can be rendered in a
-   number of formats:  PostScript (.ps), PDF, HTML, & man-pages, among others.
-   After installation, ``make psdocs``, ``make pdfdocs``, ``make htmldocs``,
-   or ``make mandocs`` will render the documentation in the requested format.
-
 Installing the kernel source
 ----------------------------
 
@@ -362,7 +356,7 @@ If something goes wrong
    as is, otherwise you will have to use the ``ksymoops`` program to make
    sense of the dump (but compiling with CONFIG_KALLSYMS is usually preferred).
    This utility can be downloaded from
-   ftp://ftp.<country>.kernel.org/pub/linux/utils/kernel/ksymoops/ .
+   https://www.kernel.org/pub/linux/utils/kernel/ksymoops/ .
    Alternatively, you can do the dump lookup by hand:
 
  - In debugging dumps like the above, it helps enormously if you can

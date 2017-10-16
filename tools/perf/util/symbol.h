@@ -186,6 +186,7 @@ struct addr_map_symbol {
 	struct symbol *sym;
 	u64	      addr;
 	u64	      al_addr;
+	u64	      phys_addr;
 };
 
 struct branch_info {
@@ -273,7 +274,7 @@ int filename__read_build_id(const char *filename, void *bf, size_t size);
 int sysfs__read_build_id(const char *filename, void *bf, size_t size);
 int modules__parse(const char *filename, void *arg,
 		   int (*process_module)(void *arg, const char *name,
-					 u64 start));
+					 u64 start, u64 size));
 int filename__read_debuglink(const char *filename, char *debuglink,
 			     size_t size);
 
@@ -306,7 +307,7 @@ int dso__load_sym(struct dso *dso, struct map *map, struct symsrc *syms_ss,
 int dso__synthesize_plt_symbols(struct dso *dso, struct symsrc *ss,
 				struct map *map);
 
-char *dso__demangle_sym(struct dso *dso, int kmodule, char *elf_name);
+char *dso__demangle_sym(struct dso *dso, int kmodule, const char *elf_name);
 
 void __symbols__insert(struct rb_root *symbols, struct symbol *sym, bool kernel);
 void symbols__insert(struct rb_root *symbols, struct symbol *sym);
@@ -348,7 +349,18 @@ void arch__sym_update(struct symbol *s, GElf_Sym *sym);
 #define SYMBOL_A 0
 #define SYMBOL_B 1
 
+int arch__compare_symbol_names(const char *namea, const char *nameb);
+int arch__compare_symbol_names_n(const char *namea, const char *nameb,
+				 unsigned int n);
 int arch__choose_best_symbol(struct symbol *syma, struct symbol *symb);
+
+enum symbol_tag_include {
+	SYMBOL_TAG_INCLUDE__NONE = 0,
+	SYMBOL_TAG_INCLUDE__DEFAULT_ONLY
+};
+
+int symbol__match_symbol_name(const char *namea, const char *nameb,
+			      enum symbol_tag_include includes);
 
 /* structure containing an SDT note's info */
 struct sdt_note {

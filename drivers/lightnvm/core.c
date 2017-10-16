@@ -74,7 +74,7 @@ static int nvm_reserve_luns(struct nvm_dev *dev, int lun_begin, int lun_end)
 
 	return 0;
 err:
-	while (--i > lun_begin)
+	while (--i >= lun_begin)
 		clear_bit(i, dev->lun_map);
 
 	return -EBUSY;
@@ -211,7 +211,7 @@ static struct nvm_tgt_dev *nvm_create_tgt_dev(struct nvm_dev *dev,
 
 	return tgt_dev;
 err_ch:
-	while (--i > 0)
+	while (--i >= 0)
 		kfree(dev_map->chnls[i].lun_offs);
 	kfree(luns);
 err_luns:
@@ -252,8 +252,9 @@ static int nvm_create_tgt(struct nvm_dev *dev, struct nvm_ioctl_create *create)
 	}
 	mutex_unlock(&dev->mlock);
 
-	if (nvm_reserve_luns(dev, s->lun_begin, s->lun_end))
-		return -ENOMEM;
+	ret = nvm_reserve_luns(dev, s->lun_begin, s->lun_end);
+	if (ret)
+		return ret;
 
 	t = kmalloc(sizeof(struct nvm_target), GFP_KERNEL);
 	if (!t) {
@@ -640,6 +641,7 @@ EXPORT_SYMBOL(nvm_max_phys_sects);
 int nvm_submit_io(struct nvm_tgt_dev *tgt_dev, struct nvm_rq *rqd)
 {
 	struct nvm_dev *dev = tgt_dev->parent;
+	int ret;
 
 	if (!dev->ops->submit_io)
 		return -ENODEV;
@@ -647,7 +649,12 @@ int nvm_submit_io(struct nvm_tgt_dev *tgt_dev, struct nvm_rq *rqd)
 	nvm_rq_tgt_to_dev(tgt_dev, rqd);
 
 	rqd->dev = tgt_dev;
-	return dev->ops->submit_io(dev, rqd);
+
+	/* In case of error, fail with right address format */
+	ret = dev->ops->submit_io(dev, rqd);
+	if (ret)
+		nvm_rq_dev_to_tgt(tgt_dev, rqd);
+	return ret;
 }
 EXPORT_SYMBOL(nvm_submit_io);
 

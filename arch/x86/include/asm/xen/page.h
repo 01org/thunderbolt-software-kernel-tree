@@ -52,12 +52,30 @@ extern bool __set_phys_to_machine(unsigned long pfn, unsigned long mfn);
 extern unsigned long __init set_phys_range_identity(unsigned long pfn_s,
 						    unsigned long pfn_e);
 
+#ifdef CONFIG_XEN_PV
 extern int set_foreign_p2m_mapping(struct gnttab_map_grant_ref *map_ops,
 				   struct gnttab_map_grant_ref *kmap_ops,
 				   struct page **pages, unsigned int count);
 extern int clear_foreign_p2m_mapping(struct gnttab_unmap_grant_ref *unmap_ops,
 				     struct gnttab_unmap_grant_ref *kunmap_ops,
 				     struct page **pages, unsigned int count);
+#else
+static inline int
+set_foreign_p2m_mapping(struct gnttab_map_grant_ref *map_ops,
+			struct gnttab_map_grant_ref *kmap_ops,
+			struct page **pages, unsigned int count)
+{
+	return 0;
+}
+
+static inline int
+clear_foreign_p2m_mapping(struct gnttab_unmap_grant_ref *unmap_ops,
+			  struct gnttab_unmap_grant_ref *kunmap_ops,
+			  struct page **pages, unsigned int count)
+{
+	return 0;
+}
+#endif
 
 /*
  * Helper functions to write or read unsigned long values to/from
@@ -73,6 +91,7 @@ static inline int xen_safe_read_ulong(unsigned long *addr, unsigned long *val)
 	return __get_user(*val, (unsigned long __user *)addr);
 }
 
+#ifdef CONFIG_XEN_PV
 /*
  * When to use pfn_to_mfn(), __pfn_to_mfn() or get_phys_to_machine():
  * - pfn_to_mfn() returns either INVALID_P2M_ENTRY or the mfn. No indicator
@@ -99,6 +118,12 @@ static inline unsigned long __pfn_to_mfn(unsigned long pfn)
 
 	return mfn;
 }
+#else
+static inline unsigned long __pfn_to_mfn(unsigned long pfn)
+{
+	return pfn;
+}
+#endif
 
 static inline unsigned long pfn_to_mfn(unsigned long pfn)
 {
@@ -132,9 +157,6 @@ static inline unsigned long mfn_to_pfn_no_overrides(unsigned long mfn)
 {
 	unsigned long pfn;
 	int ret;
-
-	if (xen_feature(XENFEAT_auto_translated_physmap))
-		return mfn;
 
 	if (unlikely(mfn >= machine_to_phys_nr))
 		return ~0;
@@ -291,8 +313,6 @@ static inline pte_t __pte_ma(pteval_t x)
 #else
 #define p4d_val_ma(x)	((x).p4d)
 #endif
-
-void xen_set_domain_pte(pte_t *ptep, pte_t pteval, unsigned domid);
 
 xmaddr_t arbitrary_virt_to_machine(void *address);
 unsigned long arbitrary_virt_to_mfn(void *vaddr);

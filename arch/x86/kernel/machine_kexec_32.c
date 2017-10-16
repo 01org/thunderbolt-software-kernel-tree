@@ -23,20 +23,8 @@
 #include <asm/io_apic.h>
 #include <asm/cpufeature.h>
 #include <asm/desc.h>
-#include <asm/cacheflush.h>
+#include <asm/set_memory.h>
 #include <asm/debugreg.h>
-
-static void set_idt(void *newidt, __u16 limit)
-{
-	struct desc_ptr curidt;
-
-	/* ia32 supports unaliged loads & stores */
-	curidt.size    = limit;
-	curidt.address = (unsigned long)newidt;
-
-	load_idt(&curidt);
-}
-
 
 static void set_gdt(void *newgdt, __u16 limit)
 {
@@ -245,7 +233,7 @@ void machine_kexec(struct kimage *image)
 	 * If you want to load them you must set up your own idt & gdt.
 	 */
 	set_gdt(phys_to_virt(0), 0);
-	set_idt(phys_to_virt(0), 0);
+	idt_invalidate(phys_to_virt(0));
 
 	/* now call it */
 	image->start = relocate_kernel_ptr((unsigned long)image->head,

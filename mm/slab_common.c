@@ -39,7 +39,7 @@ static DECLARE_WORK(slab_caches_to_rcu_destroy_work,
  * Set of flags that will prevent slab merging
  */
 #define SLAB_NEVER_MERGE (SLAB_RED_ZONE | SLAB_POISON | SLAB_STORE_USER | \
-		SLAB_TRACE | SLAB_DESTROY_BY_RCU | SLAB_NOLEAKTRACE | \
+		SLAB_TRACE | SLAB_TYPESAFE_BY_RCU | SLAB_NOLEAKTRACE | \
 		SLAB_FAILSLAB | SLAB_KASAN)
 
 #define SLAB_MERGE_SAME (SLAB_RECLAIM_ACCOUNT | SLAB_CACHE_DMA | \
@@ -47,13 +47,12 @@ static DECLARE_WORK(slab_caches_to_rcu_destroy_work,
 
 /*
  * Merge control. If this is set then no merging of slab caches will occur.
- * (Could be removed. This was introduced to pacify the merge skeptics.)
  */
-static int slab_nomerge;
+static bool slab_nomerge = !IS_ENABLED(CONFIG_SLAB_MERGE_DEFAULT);
 
 static int __init setup_slab_nomerge(char *str)
 {
-	slab_nomerge = 1;
+	slab_nomerge = true;
 	return 1;
 }
 
@@ -166,9 +165,9 @@ static int init_memcg_params(struct kmem_cache *s,
 	if (!memcg_nr_cache_ids)
 		return 0;
 
-	arr = kzalloc(sizeof(struct memcg_cache_array) +
-		      memcg_nr_cache_ids * sizeof(void *),
-		      GFP_KERNEL);
+	arr = kvzalloc(sizeof(struct memcg_cache_array) +
+		       memcg_nr_cache_ids * sizeof(void *),
+		       GFP_KERNEL);
 	if (!arr)
 		return -ENOMEM;
 
@@ -179,15 +178,23 @@ static int init_memcg_params(struct kmem_cache *s,
 static void destroy_memcg_params(struct kmem_cache *s)
 {
 	if (is_root_cache(s))
-		kfree(rcu_access_pointer(s->memcg_params.memcg_caches));
+		kvfree(rcu_access_pointer(s->memcg_params.memcg_caches));
+}
+
+static void free_memcg_params(struct rcu_head *rcu)
+{
+	struct memcg_cache_array *old;
+
+	old = container_of(rcu, struct memcg_cache_array, rcu);
+	kvfree(old);
 }
 
 static int update_memcg_params(struct kmem_cache *s, int new_array_size)
 {
 	struct memcg_cache_array *old, *new;
 
-	new = kzalloc(sizeof(struct memcg_cache_array) +
-		      new_array_size * sizeof(void *), GFP_KERNEL);
+	new = kvzalloc(sizeof(struct memcg_cache_array) +
+		       new_array_size * sizeof(void *), GFP_KERNEL);
 	if (!new)
 		return -ENOMEM;
 
@@ -199,7 +206,7 @@ static int update_memcg_params(struct kmem_cache *s, int new_array_size)
 
 	rcu_assign_pointer(s->memcg_params.memcg_caches, new);
 	if (old)
-		kfree_rcu(old, rcu);
+		call_rcu(&old->rcu, free_memcg_params);
 	return 0;
 }
 
@@ -500,7 +507,7 @@ static void slab_caches_to_rcu_destroy_workfn(struct work_struct *work)
 	struct kmem_cache *s, *s2;
 
 	/*
-	 * On destruction, SLAB_DESTROY_BY_RCU kmem_caches are put on the
+	 * On destruction, SLAB_TYPESAFE_BY_RCU kmem_caches are put on the
 	 * @slab_caches_to_rcu_destroy list.  The slab pages are freed
 	 * through RCU and and the associated kmem_cache are dereferenced
 	 * while freeing the pages, so the kmem_caches should be freed only
@@ -537,7 +544,7 @@ static int shutdown_cache(struct kmem_cache *s)
 	memcg_unlink_cache(s);
 	list_del(&s->list);
 
-	if (s->flags & SLAB_DESTROY_BY_RCU) {
+	if (s->flags & SLAB_TYPESAFE_BY_RCU) {
 		list_add_tail(&s->list, &slab_caches_to_rcu_destroy);
 		schedule_work(&slab_caches_to_rcu_destroy_work);
 	} else {

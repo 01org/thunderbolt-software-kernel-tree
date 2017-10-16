@@ -245,6 +245,11 @@ static int dsps_check_status(struct musb *musb, void *unused)
 		dsps_mod_timer_optional(glue);
 		break;
 	case OTG_STATE_A_WAIT_BCON:
+		/* keep VBUS on for host-only mode */
+		if (musb->port_mode == MUSB_PORT_MODE_HOST) {
+			dsps_mod_timer_optional(glue);
+			break;
+		}
 		musb_writeb(musb->mregs, MUSB_DEVCTL, 0);
 		skip_session = 1;
 		/* fall */
@@ -1010,12 +1015,19 @@ static int dsps_suspend(struct device *dev)
 	const struct dsps_musb_wrapper *wrp = glue->wrp;
 	struct musb *musb = platform_get_drvdata(glue->musb);
 	void __iomem *mbase;
-
-	del_timer_sync(&glue->timer);
+	int ret;
 
 	if (!musb)
 		/* This can happen if the musb device is in -EPROBE_DEFER */
 		return 0;
+
+	ret = pm_runtime_get_sync(dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(dev);
+		return ret;
+	}
+
+	del_timer_sync(&glue->timer);
 
 	mbase = musb->ctrl_base;
 	glue->context.control = musb_readl(mbase, wrp->control);
@@ -1054,6 +1066,8 @@ static int dsps_resume(struct device *dev)
 	if (musb->xceiv->otg->state == OTG_STATE_B_IDLE &&
 	    musb->port_mode == MUSB_PORT_MODE_DUAL_ROLE)
 		dsps_mod_timer(glue, -1);
+
+	pm_runtime_put(dev);
 
 	return 0;
 }

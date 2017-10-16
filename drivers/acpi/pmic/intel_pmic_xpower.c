@@ -21,103 +21,115 @@
 #include "intel_pmic.h"
 
 #define XPOWER_GPADC_LOW	0x5b
+#define XPOWER_GPI1_CTRL	0x92
+
+#define GPI1_LDO_MASK		GENMASK(2, 0)
+#define GPI1_LDO_ON		(3 << 0)
+#define GPI1_LDO_OFF		(4 << 0)
+
+#define AXP288_ADC_TS_PIN_GPADC	0xf2
+#define AXP288_ADC_TS_PIN_ON	0xf3
 
 static struct pmic_table power_table[] = {
 	{
 		.address = 0x00,
 		.reg = 0x13,
 		.bit = 0x05,
-	},
+	}, /* ALD1 */
 	{
 		.address = 0x04,
 		.reg = 0x13,
 		.bit = 0x06,
-	},
+	}, /* ALD2 */
 	{
 		.address = 0x08,
 		.reg = 0x13,
 		.bit = 0x07,
-	},
+	}, /* ALD3 */
 	{
 		.address = 0x0c,
 		.reg = 0x12,
 		.bit = 0x03,
-	},
+	}, /* DLD1 */
 	{
 		.address = 0x10,
 		.reg = 0x12,
 		.bit = 0x04,
-	},
+	}, /* DLD2 */
 	{
 		.address = 0x14,
 		.reg = 0x12,
 		.bit = 0x05,
-	},
+	}, /* DLD3 */
 	{
 		.address = 0x18,
 		.reg = 0x12,
 		.bit = 0x06,
-	},
+	}, /* DLD4 */
 	{
 		.address = 0x1c,
 		.reg = 0x12,
 		.bit = 0x00,
-	},
+	}, /* ELD1 */
 	{
 		.address = 0x20,
 		.reg = 0x12,
 		.bit = 0x01,
-	},
+	}, /* ELD2 */
 	{
 		.address = 0x24,
 		.reg = 0x12,
 		.bit = 0x02,
-	},
+	}, /* ELD3 */
 	{
 		.address = 0x28,
 		.reg = 0x13,
 		.bit = 0x02,
-	},
+	}, /* FLD1 */
 	{
 		.address = 0x2c,
 		.reg = 0x13,
 		.bit = 0x03,
-	},
+	}, /* FLD2 */
 	{
 		.address = 0x30,
 		.reg = 0x13,
 		.bit = 0x04,
-	},
+	}, /* FLD3 */
+	{
+		.address = 0x34,
+		.reg = 0x10,
+		.bit = 0x03,
+	}, /* BUC1 */
 	{
 		.address = 0x38,
 		.reg = 0x10,
-		.bit = 0x03,
-	},
+		.bit = 0x06,
+	}, /* BUC2 */
 	{
 		.address = 0x3c,
 		.reg = 0x10,
-		.bit = 0x06,
-	},
+		.bit = 0x05,
+	}, /* BUC3 */
 	{
 		.address = 0x40,
 		.reg = 0x10,
-		.bit = 0x05,
-	},
+		.bit = 0x04,
+	}, /* BUC4 */
 	{
 		.address = 0x44,
 		.reg = 0x10,
-		.bit = 0x04,
-	},
+		.bit = 0x01,
+	}, /* BUC5 */
 	{
 		.address = 0x48,
 		.reg = 0x10,
-		.bit = 0x01,
-	},
+		.bit = 0x00
+	}, /* BUC6 */
 	{
 		.address = 0x4c,
-		.reg = 0x10,
-		.bit = 0x00
-	},
+		.reg = 0x92,
+	}, /* GPI1 */
 };
 
 /* TMP0 - TMP5 are the same, all from GPADC */
@@ -156,7 +168,12 @@ static int intel_xpower_pmic_get_power(struct regmap *regmap, int reg,
 	if (regmap_read(regmap, reg, &data))
 		return -EIO;
 
-	*value = (data & BIT(bit)) ? 1 : 0;
+	/* GPIO1 LDO regulator needs special handling */
+	if (reg == XPOWER_GPI1_CTRL)
+		*value = ((data & GPI1_LDO_MASK) == GPI1_LDO_ON);
+	else
+		*value = (data & BIT(bit)) ? 1 : 0;
+
 	return 0;
 }
 
@@ -164,6 +181,11 @@ static int intel_xpower_pmic_update_power(struct regmap *regmap, int reg,
 					  int bit, bool on)
 {
 	int data;
+
+	/* GPIO1 LDO regulator needs special handling */
+	if (reg == XPOWER_GPI1_CTRL)
+		return regmap_update_bits(regmap, reg, GPI1_LDO_MASK,
+					  on ? GPI1_LDO_ON : GPI1_LDO_OFF);
 
 	if (regmap_read(regmap, reg, &data))
 		return -EIO;
@@ -190,11 +212,23 @@ static int intel_xpower_pmic_update_power(struct regmap *regmap, int reg,
 static int intel_xpower_pmic_get_raw_temp(struct regmap *regmap, int reg)
 {
 	u8 buf[2];
+	int ret;
 
-	if (regmap_bulk_read(regmap, AXP288_GP_ADC_H, buf, 2))
-		return -EIO;
+	ret = regmap_write(regmap, AXP288_ADC_TS_PIN_CTRL,
+			   AXP288_ADC_TS_PIN_GPADC);
+	if (ret)
+		return ret;
 
-	return (buf[0] << 4) + ((buf[1] >> 4) & 0x0F);
+	/* After switching to the GPADC pin give things some time to settle */
+	usleep_range(6000, 10000);
+
+	ret = regmap_bulk_read(regmap, AXP288_GP_ADC_H, buf, 2);
+	if (ret == 0)
+		ret = (buf[0] << 4) + ((buf[1] >> 4) & 0x0f);
+
+	regmap_write(regmap, AXP288_ADC_TS_PIN_CTRL, AXP288_ADC_TS_PIN_ON);
+
+	return ret;
 }
 
 static struct intel_pmic_opregion_data intel_xpower_pmic_opregion_data = {

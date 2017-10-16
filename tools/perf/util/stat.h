@@ -22,12 +22,15 @@ enum perf_stat_evsel_id {
 	PERF_STAT_EVSEL_ID__TOPDOWN_SLOTS_RETIRED,
 	PERF_STAT_EVSEL_ID__TOPDOWN_FETCH_BUBBLES,
 	PERF_STAT_EVSEL_ID__TOPDOWN_RECOVERY_BUBBLES,
+	PERF_STAT_EVSEL_ID__SMI_NUM,
+	PERF_STAT_EVSEL_ID__APERF,
 	PERF_STAT_EVSEL_ID__MAX,
 };
 
 struct perf_stat_evsel {
-	struct stats		res_stats[3];
-	enum perf_stat_evsel_id	id;
+	struct stats		 res_stats[3];
+	enum perf_stat_evsel_id	 id;
+	u64			*group_data;
 };
 
 enum aggr_mode {

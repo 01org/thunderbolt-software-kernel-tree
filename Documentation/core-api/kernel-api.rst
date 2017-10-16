@@ -114,7 +114,7 @@ The Slab Cache
 User Space Memory Access
 ------------------------
 
-.. kernel-doc:: arch/x86/include/asm/uaccess_32.h
+.. kernel-doc:: arch/x86/include/asm/uaccess.h
    :internal:
 
 .. kernel-doc:: arch/x86/lib/usercopy_32.c
@@ -344,3 +344,52 @@ codecs, and devices with strict requirements for interface clocking.
 
 .. kernel-doc:: include/linux/clk.h
    :internal:
+
+Synchronization Primitives
+==========================
+
+Read-Copy Update (RCU)
+----------------------
+
+.. kernel-doc:: include/linux/rcupdate.h
+   :external:
+
+.. kernel-doc:: include/linux/rcupdate_wait.h
+   :external:
+
+.. kernel-doc:: include/linux/rcutree.h
+   :external:
+
+.. kernel-doc:: kernel/rcu/tree.c
+   :external:
+
+.. kernel-doc:: kernel/rcu/tree_plugin.h
+   :external:
+
+.. kernel-doc:: kernel/rcu/tree_exp.h
+   :external:
+
+.. kernel-doc:: kernel/rcu/update.c
+   :external:
+
+.. kernel-doc:: include/linux/srcu.h
+   :external:
+
+.. kernel-doc:: kernel/rcu/srcutree.c
+   :external:
+
+.. kernel-doc:: include/linux/rculist_bl.h
+   :external:
+
+.. kernel-doc:: include/linux/rculist.h
+   :external:
+
+.. kernel-doc:: include/linux/rculist_nulls.h
+   :external:
+
+.. kernel-doc:: include/linux/rcu_sync.h
+   :external:
+
+.. kernel-doc:: kernel/rcu/sync.c
+   :external:
+

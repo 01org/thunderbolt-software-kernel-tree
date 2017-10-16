@@ -1,5 +1,6 @@
 #include "perf.h"
 #include "util/debug.h"
+#include "util/event.h"
 #include "util/symbol.h"
 #include "util/sort.h"
 #include "util/evsel.h"
@@ -686,7 +687,7 @@ out:
 	return err;
 }
 
-int test__hists_cumulate(int subtest __maybe_unused)
+int test__hists_cumulate(struct test *test __maybe_unused, int subtest __maybe_unused)
 {
 	int err = TEST_FAIL;
 	struct machines machines;

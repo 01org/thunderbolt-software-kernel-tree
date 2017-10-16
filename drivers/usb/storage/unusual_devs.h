@@ -42,7 +42,7 @@
  *	- a patch that adds the entry for your device, including your
  *	  email address right above the entry (plus maybe a brief
  *	  explanation of the reason for the entry),
- *	- a copy of /proc/bus/usb/devices with your device plugged in
+ *	- a copy of /sys/kernel/debug/usb/devices with your device plugged in
  *	  running with this patch.
  * Send your submission to either Phil Dibowitz <phil@ipom.com> or
  * Alan Stern <stern@rowland.harvard.edu>, and don't forget to CC: the
@@ -176,7 +176,7 @@ UNUSUAL_DEV(  0x0420, 0x0001, 0x0100, 0x0100,
 
 /*
  * Reported by Andrew Nayenko <relan@bk.ru>
- * Updated for new firmware by Phillip Potter <phillipinda@hotmail.com>
+ * Updated for new firmware by Phillip Potter <phil@philpotter.co.uk>
  */
 UNUSUAL_DEV(  0x0421, 0x0019, 0x0592, 0x0610,
 		"Nokia",
@@ -1458,6 +1458,13 @@ UNUSUAL_DEV( 0x0bc2, 0x3010, 0x0000, 0x0000,
 		"FreeAgent Pro",
 		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
 		US_FL_SANE_SENSE ),
+
+/* Reported by Kris Lindgren <kris.lindgren@gmail.com> */
+UNUSUAL_DEV( 0x0bc2, 0x3332, 0x0000, 0x9999,
+		"Seagate",
+		"External",
+		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
+		US_FL_NO_WP_DETECT ),
 
 UNUSUAL_DEV(  0x0d49, 0x7310, 0x0000, 0x9999,
 		"Maxtor",

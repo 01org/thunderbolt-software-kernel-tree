@@ -392,16 +392,6 @@ static void nfs_direct_complete(struct nfs_direct_req *dreq)
 	nfs_direct_req_release(dreq);
 }
 
-static void nfs_direct_readpage_release(struct nfs_page *req)
-{
-	dprintk("NFS: direct read done (%s/%llu %d@%lld)\n",
-		req->wb_context->dentry->d_sb->s_id,
-		(unsigned long long)NFS_FILEID(d_inode(req->wb_context->dentry)),
-		req->wb_bytes,
-		(long long)req_offset(req));
-	nfs_release_request(req);
-}
-
 static void nfs_direct_read_completion(struct nfs_pgio_header *hdr)
 {
 	unsigned long bytes = 0;
@@ -426,7 +416,7 @@ static void nfs_direct_read_completion(struct nfs_pgio_header *hdr)
 			set_page_dirty(page);
 		bytes += req->wb_bytes;
 		nfs_list_remove_request(req);
-		nfs_direct_readpage_release(req);
+		nfs_release_request(req);
 	}
 out_put:
 	if (put_dreq(dreq))
@@ -626,13 +616,13 @@ nfs_direct_write_scan_commit_list(struct inode *inode,
 				  struct list_head *list,
 				  struct nfs_commit_info *cinfo)
 {
-	spin_lock(&cinfo->inode->i_lock);
+	mutex_lock(&NFS_I(cinfo->inode)->commit_mutex);
 #ifdef CONFIG_NFS_V4_1
 	if (cinfo->ds != NULL && cinfo->ds->nwritten != 0)
 		NFS_SERVER(inode)->pnfs_curr_ld->recover_commit_reqs(list, cinfo);
 #endif
 	nfs_scan_commit_list(&cinfo->mds->list, list, cinfo, 0);
-	spin_unlock(&cinfo->inode->i_lock);
+	mutex_unlock(&NFS_I(cinfo->inode)->commit_mutex);
 }
 
 static void nfs_direct_write_reschedule(struct nfs_direct_req *dreq)
@@ -700,16 +690,9 @@ static void nfs_direct_commit_complete(struct nfs_commit_data *data)
 	int status = data->task.tk_status;
 
 	nfs_init_cinfo_from_dreq(&cinfo, dreq);
-	if (status < 0) {
-		dprintk("NFS: %5u commit failed with error %d.\n",
-			data->task.tk_pid, status);
+	if (status < 0 || nfs_direct_cmp_commit_data_verf(dreq, data))
 		dreq->flags = NFS_ODIRECT_RESCHED_WRITES;
-	} else if (nfs_direct_cmp_commit_data_verf(dreq, data)) {
-		dprintk("NFS: %5u commit verify failed\n", data->task.tk_pid);
-		dreq->flags = NFS_ODIRECT_RESCHED_WRITES;
-	}
 
-	dprintk("NFS: %5u commit returned %d\n", data->task.tk_pid, status);
 	while (!list_empty(&data->pages)) {
 		req = nfs_list_entry(data->pages.next);
 		nfs_list_remove_request(req);
